@@ -3,7 +3,7 @@
 This repository shows an example Rend server with an LMDB backend (as opposed to the standard one
 that speaks memcached). The code to create this version of Rend consists of an implementation of
 github.com/netflix/rend/handlers.Handler only. Beyond that, there is an example server
-impelementation that shows how to wire up the LMDB backend with a Rend server.
+implementation that shows how to wire up the LMDB backend with a Rend server.
 
 The Rend project can be used as a library as well as a server. The project has a default server
 which showcases the full capabilities it has, however using a library like this one, Rend can be
