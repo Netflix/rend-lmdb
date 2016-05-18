@@ -32,6 +32,6 @@ func main() {
 		server.Default,
 		orcas.L1Only,
 		lmdbh.New("/tmp/rendb/", 2*1024*1024*1024),
-		handlers.NilHandler(""),
+		handlers.NilHandler,
 	)
 }
