@@ -286,6 +286,54 @@ func (h *Handler) Replace(cmd common.SetRequest) error {
 	return decode(err)
 }
 
+func (h *Handler) Append(cmd common.SetRequest) error {
+	err := h.env.Update(func(txn *lmdb.Txn) error {
+		buf, err := txn.Get(h.dbi, cmd.Key)
+		if err != nil {
+			return err
+		}
+
+		prev := bufToEntry(buf)
+
+		exptime := uint32(time.Now().Unix()) + cmd.Exptime
+		e := entry{
+			exptime: exptime,
+			flags:   cmd.Flags,
+			data:    append(prev.data, cmd.Data...),
+		}
+
+		buf = entryToBuf(e)
+
+		return txn.Put(h.dbi, cmd.Key, buf, 0)
+	})
+
+	return decode(err)
+}
+
+func (h *Handler) Prepend(cmd common.SetRequest) error {
+	err := h.env.Update(func(txn *lmdb.Txn) error {
+		buf, err := txn.Get(h.dbi, cmd.Key)
+		if err != nil {
+			return err
+		}
+
+		prev := bufToEntry(buf)
+
+		exptime := uint32(time.Now().Unix()) + cmd.Exptime
+		e := entry{
+			exptime: exptime,
+			flags:   cmd.Flags,
+			data:    append(cmd.Data, prev.data...),
+		}
+
+		buf = entryToBuf(e)
+
+		return txn.Put(h.dbi, cmd.Key, buf, 0)
+	})
+
+	return decode(err)
+}
+
 func (h *Handler) Get(cmd common.GetRequest) (<-chan common.GetResponse, <-chan error) {
 	dataOut := make(chan common.GetResponse, len(cmd.Keys))
 	errorOut := make(chan error, 1)
