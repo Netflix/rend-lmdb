@@ -193,7 +193,7 @@ func New(path string, size int64) handlers.HandlerConst {
 			fs, err := os.Stat(path)
 			if err != nil {
 				if os.IsNotExist(err) {
-					if err := os.MkdirAll(path, 0664); err != nil {
+					if err := os.MkdirAll(path, 0774); err != nil {
 						panic(err)
 					}
 				} else {
