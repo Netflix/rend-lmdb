@@ -32,6 +32,10 @@ type entry struct {
 	data    []byte
 }
 
+func (e entry) expired() bool {
+	return e.exptime != 0 && e.exptime < uint32(time.Now().Unix())
+}
+
 func entryToBuf(e entry) []byte {
 	// If this changes, make sure to update the GAT function below
 	// The GAT function directly overwrites the exptime field
@@ -112,12 +116,12 @@ func reaper(env *lmdb.Env, dbi lmdb.DBI) {
 			txn.RawRead = true
 			cur, err := txn.OpenCursor(dbi)
 			if err != nil {
-				panic(err)
+				return err
 			}
 
 			stats, err := txn.Stat(dbi)
 			if err != nil {
-				panic(err)
+				return err
 			}
 			log.Printf("[REAPER] Items before: %d", stats.Entries)
 
@@ -131,8 +135,10 @@ func reaper(env *lmdb.Env, dbi lmdb.DBI) {
 					return err
 				}
 
-				exptime := binary.BigEndian.Uint32(buf[0:4])
-				if exptime < uint32(time.Now().Unix()) {
+				e := entry{
+					exptime: binary.BigEndian.Uint32(buf[0:4]),
+				}
+				if e.expired() {
 					// Mini update transaction here to avoid blocking other writers
 					err = env.Update(func(t *lmdb.Txn) error {
 						// double check the expire time after getting txn lock
@@ -140,8 +146,10 @@ func reaper(env *lmdb.Env, dbi lmdb.DBI) {
 						if err != nil {
 							return err
 						}
-						exptime := binary.BigEndian.Uint32(buf[0:4])
-						if exptime < uint32(time.Now().Unix()) {
+						e := entry{
+							exptime: binary.BigEndian.Uint32(buf[0:4]),
+						}
+						if e.expired() {
 							return t.Del(dbi, key, nil)
 						}
 						return nil
@@ -153,12 +161,19 @@ func reaper(env *lmdb.Env, dbi lmdb.DBI) {
 				}
 			}
 
-			stats, err = txn.Stat(dbi)
+			return nil
+		})
+
+		if err != nil {
+			log.Printf("[REAPER] Error while reaping: %v\n", err.Error())
+		}
+
+		err = env.View(func(txn *lmdb.Txn) error {
+			stats, err := txn.Stat(dbi)
 			if err != nil {
-				panic(err)
+				return err
 			}
 			log.Printf("[REAPER] Items after: %d\n", stats.Entries)
-
 			return nil
 		})
 
@@ -232,7 +247,10 @@ func New(path string, size int64) handlers.HandlerConst {
 }
 
 func (h *Handler) Set(cmd common.SetRequest) error {
-	exptime := uint32(time.Now().Unix()) + cmd.Exptime
+	var exptime uint32
+	if cmd.Exptime > 0 {
+		exptime = uint32(time.Now().Unix()) + cmd.Exptime
+	}
 	e := entry{
 		exptime: exptime,
 		flags:   cmd.Flags,
@@ -249,7 +267,10 @@ func (h *Handler) Set(cmd common.SetRequest) error {
 }
 
 func (h *Handler) Add(cmd common.SetRequest) error {
-	exptime := uint32(time.Now().Unix()) + cmd.Exptime
+	var exptime uint32
+	if cmd.Exptime > 0 {
+		exptime = uint32(time.Now().Unix()) + cmd.Exptime
+	}
 	e := entry{
 		exptime: exptime,
 		flags:   cmd.Flags,
@@ -266,7 +287,10 @@ func (h *Handler) Add(cmd common.SetRequest) error {
 }
 
 func (h *Handler) Replace(cmd common.SetRequest) error {
-	exptime := uint32(time.Now().Unix()) + cmd.Exptime
+	var exptime uint32
+	if cmd.Exptime > 0 {
+		exptime = uint32(time.Now().Unix()) + cmd.Exptime
+	}
 	e := entry{
 		exptime: exptime,
 		flags:   cmd.Flags,
@@ -295,10 +319,9 @@ func (h *Handler) Append(cmd common.SetRequest) error {
 
 		prev := bufToEntry(buf)
 
-		exptime := uint32(time.Now().Unix()) + cmd.Exptime
 		e := entry{
-			exptime: exptime,
-			flags:   cmd.Flags,
+			exptime: prev.exptime,
+			flags:   prev.flags,
 			data:    append(prev.data, cmd.Data...),
 		}
 
@@ -319,10 +342,9 @@ func (h *Handler) Prepend(cmd common.SetRequest) error {
 
 		prev := bufToEntry(buf)
 
-		exptime := uint32(time.Now().Unix()) + cmd.Exptime
 		e := entry{
-			exptime: exptime,
-			flags:   cmd.Flags,
+			exptime: prev.exptime,
+			flags:   prev.flags,
 			data:    append(cmd.Data, prev.data...),
 		}
 
@@ -361,7 +383,7 @@ func realHandleGet(h *Handler, cmd common.GetRequest, dataOut chan common.GetRes
 
 			e := bufToEntry(buf)
 
-			if e.exptime < uint32(time.Now().Unix()) {
+			if e.expired() {
 				dataOut <- common.GetResponse{
 					Miss:   true,
 					Quiet:  cmd.Quiet[idx],
@@ -418,7 +440,7 @@ func realHandleGetE(h *Handler, cmd common.GetRequest, dataOut chan common.GetER
 
 			e := bufToEntry(buf)
 
-			if e.exptime < uint32(time.Now().Unix()) {
+			if e.expired() {
 				dataOut <- common.GetEResponse{
 					Miss:   true,
 					Quiet:  cmd.Quiet[idx],
@@ -461,7 +483,7 @@ func (h *Handler) GAT(cmd common.GATRequest) (common.GetResponse, error) {
 		e = bufToEntry(buf)
 
 		// If the item is expired, proactively delete it
-		if e.exptime < uint32(time.Now().Unix()) {
+		if e.expired() {
 			return txn.Del(h.dbi, cmd.Key, nil)
 		}
 
