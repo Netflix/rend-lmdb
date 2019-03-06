@@ -18,17 +18,18 @@ import (
 	"github.com/netflix/rend-lmdb/lmdbh"
 	"github.com/netflix/rend/handlers"
 	"github.com/netflix/rend/orcas"
+	"github.com/netflix/rend/protocol"
+	"github.com/netflix/rend/protocol/textprot"
 	"github.com/netflix/rend/server"
 )
 
 func main() {
-	largs := server.ListenArgs{
-		Type: server.ListenTCP,
-		Port: 12121,
-	}
+	l := server.TCPListener(12121)
+	protocols := []protocol.Components{textprot.Components}
 
 	server.ListenAndServe(
-		largs,
+		l,
+		protocols,
 		server.Default,
 		orcas.L1Only,
 		lmdbh.New("/tmp/rendb/", 2*1024*1024*1024),
