@@ -10,7 +10,7 @@ which showcases the full capabilities it has, however using a library like this 
 extended to use any backend storage.
 
 The performance of Rend will be different based on the backend used, for example memcached stores
-data only in memory but this libary could possibly store data partially on disk and partially in
+data only in memory but this library could possibly store data partially on disk and partially in
 memory - the same semantics as the underlying LMDB store.
 
 ## Prerequisites
